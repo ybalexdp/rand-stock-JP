@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/extrame/xls"
+	"github.com/xuri/excelize/v2"
 )
 
 func downloadXLS(url, filename string) error {
@@ -40,23 +40,32 @@ func downloadXLS(url, filename string) error {
 	return nil
 }
 
-func readStockCodesFromXLS(filename string) ([]string, error) {
+func readStockCodesFromXLSX(filename string) ([]string, error) {
 
-	xlFile, err := xls.Open(filename, "utf-8")
+	f, err := excelize.OpenFile(filename)
 	if err != nil {
-		return nil, fmt.Errorf("XLSファイルのオープンエラー: %v", err)
+		return nil, fmt.Errorf("XLSXファイルのオープンエラー: %v", err)
+	}
+	defer f.Close()
+
+	sheetName := f.GetSheetName(0)
+	if sheetName == "" {
+		return nil, fmt.Errorf("シートの取得エラー")
 	}
 
-	sheet := xlFile.GetSheet(0)
-	if sheet == nil {
-		return nil, fmt.Errorf("シートの取得エラー")
+	rows, err := f.GetRows(sheetName)
+	if err != nil {
+		return nil, fmt.Errorf("行の取得エラー: %v", err)
 	}
 
 	var stockCodes []string
 
-	for i := 1; i <= int(sheet.MaxRow); i++ {
-		row := sheet.Row(i)
-		code := row.Col(1)
+	for i := 1; i < len(rows); i++ {
+		row := rows[i]
+		if len(row) < 2 {
+			continue
+		}
+		code := row[1]
 		if code != "" {
 			stockCodes = append(stockCodes, code)
 		}
@@ -66,17 +75,17 @@ func readStockCodesFromXLS(filename string) ([]string, error) {
 }
 
 func main() {
-	xlsURL := "https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xls"
+	xlsURL := "https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xlsx"
 
 	now := time.Now()
 	yearMonth := now.Format("2006-01")
 
-	xlsFilename := fmt.Sprintf("data_j_%s.xls", yearMonth)
+	xlsFilename := fmt.Sprintf("data_j_%s.xlsx", yearMonth)
 
 	if _, err := os.Stat(xlsFilename); err == nil {
 		fmt.Println("同じ月のファイルが既に存在します。ダウンロードをスキップします。")
 	} else {
-		files, err := filepath.Glob("data_j_*.xls")
+		files, err := filepath.Glob("data_j_*.xls*")
 		if err != nil {
 			log.Fatalf("ファイルの検索に失敗しました: %v", err)
 		}
@@ -97,8 +106,8 @@ func main() {
 		fmt.Println("XLSのダウンロードが完了しました。")
 	}
 
-	fmt.Println("XLSから銘柄コードを読み込んでいます...")
-	stockCodes, err := readStockCodesFromXLS(xlsFilename)
+	fmt.Println("XLSXから銘柄コードを読み込んでいます...")
+	stockCodes, err := readStockCodesFromXLSX(xlsFilename)
 	if err != nil {
 		log.Fatalf("銘柄コードの読み込みに失敗しました: %v", err)
 	}
